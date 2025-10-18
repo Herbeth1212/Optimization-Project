@@ -188,7 +188,7 @@ def golden_section_method(lowerLimit:float, upperLimit:float, accuracy:float = 1
     
 
 def main_function():
-    with open("input.txt") as f:
+    with open("Phase 1/input.txt") as f:
         inputParam = f.readline().split()
             
     a = float(inputParam[0])

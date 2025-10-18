@@ -7,6 +7,13 @@ from Phase1Methods import bounding_phase_method, golden_section_method
 
 hashmap = {}
 fneval = 0
+func_name = {
+        1:"Sum of Squares",
+        2:"Rosenbrock",
+        3:"Dixon-Price",
+        4:"Trid",
+        5:"Zakharov",
+}
 
 def reset_globals():
     global hashmap, fneval
@@ -45,9 +52,8 @@ def evaluate_objective(varArr, func_index):
             sum1 += var**2
             sum2 += 0.5 * (i + 1) * var 
         total = sum1 + sum2**2 + sum2**4
-    elif func_index == 6: # Himmelblau's Function
-        total = (varArr[0]**2 + varArr[1] - 11)**2 + (varArr[0] + varArr[1]**2 - 7)**2
-    
+
+
     hashmap[var_key] = total
     return total
 
@@ -105,28 +111,73 @@ def unidirectional_search(x, direction, func, a,b):
     alpha_star = (final_min_alpha+final_max_alpha)/2
     return x + alpha_star * direction
 
+def plot_search_path(path, func_index, a,b,d):
+    func_obj = partial(evaluate_objective, func_index=func_index)
+    bounds = (a,b)
+    
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    # Create a grid to evaluate the function for the contour plot
+    x_range = np.linspace(bounds[0], bounds[1], 300)
+    y_range = np.linspace(bounds[0], bounds[1], 300)
+    X, Y = np.meshgrid(x_range, y_range)
+    # Evaluate the function on the grid
+    Z = np.array([func_obj(np.array([x, y])) for x, y in zip(np.ravel(X), np.ravel(Y))])
+    Z = Z.reshape(X.shape)
+    # Plot the contour lines
+    levels = np.logspace(0, 5, 15) # Logarithmic levels for better visualization
+    contour = ax.contour(X, Y, Z, levels=levels, cmap='viridis')
+    ax.clabel(contour, inline=True, fontsize=8, fmt='%d')
+    path_points = np.array(path)
+    if d == 2:
+        ax.plot(path_points[:, 0], path_points[:, 1], 'r-o', markersize=6, linewidth=1.5, label='Search Path')
+    elif d == 1:
+        ax.plot(path_points[:,0], np.full_like(path_points[:,0],0), 'r-o', markersize=6, linewidth=1.5, label='Search Path')
+    
+    # Add text labels for each iteration number
+    for i, point in enumerate(path):
+        if d == 2:
+            ax.text(point[0] + 0.3, point[1] + 0.3, str(i+1), fontsize=10, color='black', ha='center', va='center')
+        elif d ==1:
+            ax.text(point[0] + 0.3,0.3, str(i+1), fontsize=10, color='black', ha='center', va='center')
+
+
+    ax.set_title(f"Powell's Method Search Path on {func_name[func_index]} for d={d}", fontsize=16, pad=20)
+    ax.set_xlabel('$x_1$', fontsize=12)
+    ax.set_ylabel('$x_2$', fontsize=12)
+    ax.set_xlim(bounds)
+    ax.set_ylim(bounds)
+    ax.set_aspect('equal', adjustable='box')
+    ax.legend()
+    plt.show()
+
+
 def powells_conjugate_direction_method(func_obj, d, a,b, max_iter=1000, acc=1e-6,linDepAc = 5):
     x = np.array([uniform(a,b) for i in range(d)])
     initial_guess = x
     dir_matrix = np.identity(d)
+    x_values = np.array([])
+    x_values = np.append(x_values, x)
     for i in range(max_iter):
         for j in range(d+1):
             x = unidirectional_search(x, dir_matrix[j%d], func_obj, a,b)
             if  j == 0:
                 x_start = x
+        x_values = np.vstack([x_values, x])
         new_dir = x - x_start
 
         #Cecking if the magnitude of new direction is less than the accuracy
         norm_new_dir = magnitude(new_dir)
         if norm_new_dir < acc:
-            return x, func_obj(x), fneval, initial_guess
+            return x, func_obj(x), fneval, initial_guess,x_values
             
         #checking for linear dependency of new direction with the other directions
         reset_needed = False
         for j, retained_dir in enumerate(dir_matrix[1:]):
             if norm_new_dir > 1e-9:
                 cos_angle = np.dot(new_dir, retained_dir) / (norm_new_dir * magnitude(retained_dir))
-                angle_deg = degrees(np.arccos(cos_angle))
+                angle_deg = degrees(np.clip(np.arccos(cos_angle),-1,1))
                 if angle_deg < linDepAc:#5 deg
                     reset_needed = True
                     break
@@ -135,7 +186,7 @@ def powells_conjugate_direction_method(func_obj, d, a,b, max_iter=1000, acc=1e-6
             dir_matrix = np.identity(d)
         else:
             dir_matrix = np.vstack([ normalize(new_dir),dir_matrix[0:d-1]])
-    return x, func_obj(x), fneval, initial_guess
+    return x, func_obj(x), fneval, initial_guess,x_values
 
 def main():
     with open("Phase 2/input.txt", "r") as f:
@@ -148,18 +199,24 @@ def main():
     f.write(f"Objective Function Index: {func_index}\n")
     f.write(f"Number of Variables (d): {d}\n")
     f.write(f"Limits: [{a}, {b}]\n")
-    num_runs = 10
+    num_runs = 1
     f.write(f"Num of test runs = {num_runs} \n")
     f.write(f"{'Run':<5}{'Initial Guess(x0)':<70}{'Optimal Point (x*)':<70}{'f(x*)':<20}{'nEval':<10}\n")
     f.write("-" * 180)
     f.write("\n")
+    path = None
     objective_function_with_index = partial(evaluate_objective, func_index=func_index)
     for run in range(num_runs):
         reset_globals()
-        x_opt, f_opt, n_eval, initial_guess = powells_conjugate_direction_method(func_obj=objective_function_with_index, d=d, a=a, b=b)
+        x_opt, f_opt, n_eval, initial_guess, path = powells_conjugate_direction_method(func_obj=objective_function_with_index, d=d, a=a, b=b)
         x_opt_str = np.array2string(x_opt, formatter={'float_kind':lambda val: f"{val:8.4f}"})
         initial_guess_str = np.array2string(initial_guess, formatter={'float_kind':lambda val: f"{val:8.4f}"})
         f.write(f"{run+1:<5}{initial_guess_str:<70}{x_opt_str:<70}{f_opt:<20.6e}{n_eval:<10}\n")
     f.close()
+
+    #plot the last iteration search path
+    #This is only supported if d <= 2
+    if d <= 2:
+        plot_search_path(path,func_index,a,b,d)
 
 main()
